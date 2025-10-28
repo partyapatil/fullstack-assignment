@@ -21,7 +21,10 @@ export async function getGuests(statusFilter?: string): Promise<Guest[]> {
 	let url = `${API_BASE_URL}/guests`;
 	
 	if (statusFilter) {
-		url += `?filter=${statusFilter}`;  // Bug: should be 'status' not 'filter'
+
+		// yes i found it
+		// FIXED: Changed from 'filter' to 'status'
+url += `?status=${statusFilter}`;
 	}
 
 	const response = await fetch(url);

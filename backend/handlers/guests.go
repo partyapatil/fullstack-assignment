@@ -1,150 +1,194 @@
 package handlers
 
 import (
-	"database/sql"
-	"encoding/json"
-	"event-guest-manager/db"
-	"net/http"
-	"strconv"
+    "database/sql"
+    "encoding/json"
+    "event-guest-manager/db"
+    "net/http"
+    "strconv"
+    "time"
 
-	"github.com/gorilla/mux"
+    "github.com/gorilla/mux"
 )
 
 type GuestHandler struct {
-	db *sql.DB
+    db *sql.DB
 }
 
 func NewGuestHandler(database *sql.DB) *GuestHandler {
-	return &GuestHandler{db: database}
+    return &GuestHandler{db: database}
 }
 
 type CreateGuestRequest struct {
-	Name   string `json:"name"`
-	Email  string `json:"email"`
-	Phone  string `json:"phone"`
-	Status string `json:"status"`
+    Name                string  `json:"name"`
+    Email               string  `json:"email"`
+    Phone               string  `json:"phone"`
+    Status              string  `json:"status"`
+    Notes               *string `json:"notes"`
+    EventID             int     `json:"event_id"`
+    RsvpDate            *string `json:"rsvp_date"`
+    PlusOnes            int     `json:"plus_ones"`
+    DietaryRestrictions *string `json:"dietary_restrictions"`
 }
 
 type ErrorResponse struct {
-	Error string `json:"error"`
+    Error string `json:"error"`
 }
 
 // GetGuests handles GET /api/guests
 func (h *GuestHandler) GetGuests(w http.ResponseWriter, r *http.Request) {
-	// Get status filter from query params
-	// BUG #3 (Backend part): Expects 'status' but frontend sends 'filter'
-	statusFilter := r.URL.Query().Get("status")
+    // Get status filter from query params
+    statusFilter := r.URL.Query().Get("status")
 
-	guests, err := db.GetAllGuests(h.db, statusFilter)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Failed to fetch guests")
-		return
-	}
+    guests, err := db.GetAllGuests(h.db, statusFilter)
+    if err != nil {
+        respondWithError(w, http.StatusInternalServerError, "Failed to fetch guests")
+        return
+    }
 
-	// Return empty array instead of null if no guests
-	if guests == nil {
-		guests = []db.Guest{}
-	}
+    // Return empty array instead of null if no guests
+    if guests == nil {
+        guests = []db.Guest{}
+    }
 
-	respondWithJSON(w, http.StatusOK, guests)
+    respondWithJSON(w, http.StatusOK, guests)
 }
 
 // GetGuest handles GET /api/guests/:id
 func (h *GuestHandler) GetGuest(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid guest ID")
-		return
-	}
+    vars := mux.Vars(r)
+    id, err := strconv.Atoi(vars["id"])
+    if err != nil {
+        respondWithError(w, http.StatusBadRequest, "Invalid guest ID")
+        return
+    }
 
-	guest, err := db.GetGuestByID(h.db, id)
-	if err != nil {
-		if err.Error() == "guest not found" {
-			respondWithError(w, http.StatusNotFound, "Guest not found")
-			return
-		}
-		respondWithError(w, http.StatusInternalServerError, "Failed to fetch guest")
-		return
-	}
+    guest, err := db.GetGuestByID(h.db, id)
+    if err != nil {
+        if err.Error() == "guest not found" {
+            respondWithError(w, http.StatusNotFound, "Guest not found")
+            return
+        }
+        respondWithError(w, http.StatusInternalServerError, "Failed to fetch guest")
+        return
+    }
 
-	respondWithJSON(w, http.StatusOK, guest)
+    respondWithJSON(w, http.StatusOK, guest)
 }
 
 // CreateGuest handles POST /api/guests
+// CreateGuest handles POST /api/guests
 func (h *GuestHandler) CreateGuest(w http.ResponseWriter, r *http.Request) {
-	var req CreateGuestRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid request body")
-		return
-	}
+    var req CreateGuestRequest
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        respondWithError(w, http.StatusBadRequest, "Invalid request body")
+        return
+    }
 
-	// Validate required fields
-	if req.Name == "" {
-		respondWithError(w, http.StatusBadRequest, "Name is required")
-		return
-	}
-	if req.Email == "" {
-		respondWithError(w, http.StatusBadRequest, "Email is required")
-		return
-	}
+    // Validate required fields
+    if req.Name == "" {
+        respondWithError(w, http.StatusBadRequest, "Name is required")
+        return
+    }
+    if req.Email == "" {
+        respondWithError(w, http.StatusBadRequest, "Email is required")
+        return
+    }
+ if req.EventID == 0 {
+    req.EventID = 1
+}
 
-	// Set default status if not provided
-	if req.Status == "" {
-		req.Status = "pending"
-	}
+    // Check for duplicate email
+    exists, err := db.CheckEmailExists(h.db, req.Email)
+    if err != nil {
+        respondWithError(w, http.StatusInternalServerError, "Failed to check email")
+        return
+    }
+    if exists {
+        respondWithError(w, http.StatusConflict, "Email already registered")
+        return
+    }
 
-	// Validate status
-	if req.Status != "pending" && req.Status != "attending" && req.Status != "declined" {
-		respondWithError(w, http.StatusBadRequest, "Status must be pending, attending, or declined")
-		return
-	}
+    // Set default status if not provided
+    if req.Status == "" {
+        req.Status = "pending"
+    }
 
-	guest, err := db.CreateGuest(h.db, req.Name, req.Email, req.Phone, req.Status)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Failed to create guest")
-		return
-	}
+    // Validate status
+    if req.Status != "pending" && req.Status != "attending" && req.Status != "declined" {
+        respondWithError(w, http.StatusBadRequest, "Status must be pending, attending, or declined")
+        return
+    }
 
-	respondWithJSON(w, http.StatusCreated, guest)
+    // Parse rsvp_date if provided
+    var rsvpDate *time.Time
+    if req.RsvpDate != nil && *req.RsvpDate != "" {
+        parsedDate, err := time.Parse(time.RFC3339, *req.RsvpDate)
+        if err != nil {
+            respondWithError(w, http.StatusBadRequest, "Invalid rsvp_date format")
+            return
+        }
+        rsvpDate = &parsedDate
+    }
+
+    guest, err := db.CreateGuest(h.db, req.Name, req.Email, req.Phone, req.Status,
+        req.Notes, req.EventID, rsvpDate, req.PlusOnes, req.DietaryRestrictions)
+    if err != nil {
+        respondWithError(w, http.StatusInternalServerError, "Failed to create guest")
+        return
+    }
+
+    respondWithJSON(w, http.StatusCreated, guest)
+}
+
+
+// GetAttendeeCount handles GET /api/guests/stats
+func (h *GuestHandler) GetAttendeeCount(w http.ResponseWriter, r *http.Request) {
+    stats, err := db.GetGuestStats(h.db)
+    if err != nil {
+        respondWithError(w, http.StatusInternalServerError, "Failed to get stats")
+        return
+    }
+
+    respondWithJSON(w, http.StatusOK, stats)
 }
 
 // DeleteGuest handles DELETE /api/guests/:id
 func (h *GuestHandler) DeleteGuest(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id, err := strconv.Atoi(vars["id"])
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid guest ID")
-		return
-	}
+    vars := mux.Vars(r)
+    id, err := strconv.Atoi(vars["id"])
+    if err != nil {
+        respondWithError(w, http.StatusBadRequest, "Invalid guest ID")
+        return
+    }
 
-	err = db.DeleteGuest(h.db, id)
-	if err != nil {
-		if err.Error() == "guest not found" {
-			respondWithError(w, http.StatusNotFound, "Guest not found")
-			return
-		}
-		respondWithError(w, http.StatusInternalServerError, "Failed to delete guest")
-		return
-	}
+    err = db.DeleteGuest(h.db, id)
+    if err != nil {
+        if err.Error() == "guest not found" {
+            respondWithError(w, http.StatusNotFound, "Guest not found")
+            return
+        }
+        respondWithError(w, http.StatusInternalServerError, "Failed to delete guest")
+        return
+    }
 
-	w.WriteHeader(http.StatusNoContent)
+    w.WriteHeader(http.StatusNoContent)
 }
 
 // Helper functions
 func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
-	response, err := json.Marshal(payload)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error":"Failed to encode response"}`))
-		return
-	}
+    response, err := json.Marshal(payload)
+    if err != nil {
+        w.WriteHeader(http.StatusInternalServerError)
+        w.Write([]byte(`{"error":"Failed to encode response"}`))
+        return
+    }
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	w.Write(response)
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(code)
+    w.Write(response)
 }
 
 func respondWithError(w http.ResponseWriter, code int, message string) {
-	respondWithJSON(w, code, ErrorResponse{Error: message})
+    respondWithJSON(w, code, ErrorResponse{Error: message})
 }

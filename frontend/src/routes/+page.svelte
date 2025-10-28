@@ -51,7 +51,7 @@
 				name: formName,
 				email: formEmail,
 				phone: formPhone,
-				status: formStatus
+				status: formStatus,
 			});
 
 			// Reset form
@@ -99,11 +99,9 @@
 	});
 
 	// Reload when filter changes
-	$effect(() => {
-		if (statusFilter !== undefined) {
-			loadGuests();
-		}
-	});
+$effect(() => {
+	loadGuests();
+});
 </script>
 
 <div class="min-h-screen bg-gray-50 py-8">

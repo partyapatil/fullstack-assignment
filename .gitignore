@@ -59,3 +59,11 @@ PROJECT_STRUCTURE.md
 CHANGELOG.md
 PUBLIC_RSVP_FEATURE.md
 
+node_modules/
+.svelte-kit/
+build/
+.DS_Store
+*.log
+.env
+.env.local
+backend/backend.exe

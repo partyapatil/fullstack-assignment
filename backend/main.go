@@ -55,6 +55,7 @@ func main() {
 
 	// API routes
 	api := router.PathPrefix("/api").Subrouter()
+	api.HandleFunc("/guests/stats", guestHandler.GetAttendeeCount).Methods("GET")
 	api.HandleFunc("/guests", guestHandler.GetGuests).Methods("GET")
 	api.HandleFunc("/guests", guestHandler.CreateGuest).Methods("POST")
 	api.HandleFunc("/guests/{id}", guestHandler.GetGuest).Methods("GET")
