@@ -1,8 +1,8 @@
 # Submission
 
-**Candidate Name**: [Your Name]  
-**Date**: [Date]  
-**Email**: [Your Email]
+**Candidate Name**: prathamesh
+**Date**: 28-10-2025
+**Email**:prathameshpatil8579@gmail.com
 
 ---
 
